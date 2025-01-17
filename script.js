@@ -1,29 +1,50 @@
 import topics from './topics.js';
 
-let currentTopicIndex = 0;
+let currentTopicIndex = null; // Changed to null to indicate no selection
 let expandedSubtopics = new Set();
 
-// Theme toggle functionality
+// DOM Elements
 const themeToggle = document.getElementById('theme-toggle');
 const searchBtn = document.getElementById('search-btn');
 const searchModal = document.getElementById('search-modal');
 const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
+const mobileNav = document.getElementById('mobile-nav');
+const menuBtn = document.getElementById('menu-btn');
+const closeNavBtn = document.getElementById('close-nav');
 
-// Initialize theme
-if (localStorage.getItem('theme') === 'dark') {
+// Mobile Navigation
+menuBtn.addEventListener('click', () => {
+    mobileNav.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+});
+
+closeNavBtn.addEventListener('click', () => {
+    mobileNav.classList.add('hidden');
+    document.body.style.overflow = '';
+});
+
+mobileNav.addEventListener('click', (e) => {
+    if (e.target === mobileNav) {
+        mobileNav.classList.add('hidden');
+        document.body.style.overflow = '';
+    }
+});
+
+// Theme Management
+if (localStorage.getItem('theme') === 'dark' || 
+    (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
     document.documentElement.classList.add('dark');
 } else {
     document.documentElement.classList.remove('dark');
 }
 
-// Theme toggle
 themeToggle.addEventListener('click', () => {
     const isDarkMode = document.documentElement.classList.toggle('dark');
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
 });
 
-// Search functionality
+// Search Functionality
 searchBtn.addEventListener('click', () => {
     searchModal.classList.remove('hidden');
     searchInput.focus();
@@ -40,11 +61,19 @@ searchInput.addEventListener('input', (e) => {
     const results = [];
 
     topics.forEach((topic, topicIndex) => {
+        if (topic.title.toLowerCase().includes(query)) {
+            results.push({
+                title: topic.title,
+                type: 'topic',
+                topicIndex
+            });
+        }
         topic.subtopics.forEach((subtopic, subtopicIndex) => {
             if (subtopic.title.toLowerCase().includes(query)) {
                 results.push({
                     title: subtopic.title,
                     topicTitle: topic.title,
+                    type: 'subtopic',
                     topicIndex,
                     subtopicIndex
                 });
@@ -54,44 +83,53 @@ searchInput.addEventListener('input', (e) => {
 
     searchResults.innerHTML = results.length ? results.map(result => `
         <button
-            onclick="window.handleSearchResult(${result.topicIndex}, ${result.subtopicIndex})"
+            onclick="window.handleSearchResult(${result.topicIndex}${result.type === 'subtopic' ? `, ${result.subtopicIndex}` : ''})"
             class="w-full text-left p-4 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
             <p class="font-medium">${result.title}</p>
-            <p class="text-sm text-gray-500 dark:text-gray-400">${result.topicTitle}</p>
+            ${result.type === 'subtopic' ? `
+                <p class="text-sm text-gray-500 dark:text-gray-400">${result.topicTitle}</p>
+            ` : ''}
         </button>
     `).join('') : '<p class="text-gray-500 dark:text-gray-400 p-4">No results found</p>';
 });
 
 // Handle search result selection
-window.handleSearchResult = (topicIndex, subtopicIndex) => {
+window.handleSearchResult = (topicIndex, subtopicIndex = null) => {
     searchModal.classList.add('hidden');
+    mobileNav.classList.add('hidden');
+    document.body.style.overflow = '';
     loadContent(topicIndex);
-    setTimeout(() => {
-        const subtopicId = `${topicIndex}-${subtopicIndex}`;
-        if (!expandedSubtopics.has(subtopicId)) {
-            toggleSubtopic(subtopicId);
-        }
-        document.getElementById(`subtopic-${subtopicId}`).scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+    
+    if (subtopicIndex !== null) {
+        setTimeout(() => {
+            const subtopicId = `${topicIndex}-${subtopicIndex}`;
+            if (!expandedSubtopics.has(subtopicId)) {
+                toggleSubtopic(subtopicId);
+            }
+            document.getElementById(`subtopic-${subtopicId}`).scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+    }
 };
 
-// Load topics into sidebar
+// Load topics into navigation
 function loadTopics() {
     const topicList = document.getElementById('topic-list');
-    topics.forEach((topic, index) => {
-        const button = document.createElement('button');
-        button.className = `w-full text-left p-3 rounded-lg transition-colors duration-200 flex items-center justify-between ${
-            index === currentTopicIndex ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-        }`;
-        button.innerHTML = `
-            <span class="font-medium truncate">${topic.title}</span>
-            <svg class="h-4 w-4 flex-shrink-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    const mobileTopicList = document.getElementById('mobile-topic-list');
+    const topicHTML = topics.map((topic, index) => `
+        <button
+            onclick="window.loadContent(${index})"
+            class="w-full text-left p-3 rounded-lg transition-colors duration-200 flex items-center justify-between gap-2 ${
+                index === currentTopicIndex ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+            }">
+            <span class="font-medium whitespace-normal">${topic.title}</span>
+            <svg class="h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
             </svg>
-        `;
-        button.addEventListener('click', () => loadContent(index));
-        topicList.appendChild(button);
-    });
+        </button>
+    `).join('');
+    
+    topicList.innerHTML = topicHTML;
+    mobileTopicList.innerHTML = topicHTML;
 }
 
 // Toggle subtopic content
@@ -111,109 +149,148 @@ window.toggleSubtopic = function(subtopicId) {
 };
 
 // Load content for selected topic
-function loadContent(index) {
+window.loadContent = function(index) {
     currentTopicIndex = index;
     const contentArea = document.getElementById('content-area');
     const topic = topics[index];
     
-    // Update active state in sidebar
-    document.querySelectorAll('#topic-list button').forEach((btn, i) => {
-        btn.className = `w-full text-left p-3 rounded-lg transition-colors duration-200 flex items-center justify-between ${
+    // Update active states
+    document.querySelectorAll('#topic-list button, #mobile-topic-list button').forEach((btn, i) => {
+        btn.className = `w-full text-left p-3 rounded-lg transition-colors duration-200 flex items-center justify-between gap-2 ${
             i === index ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'hover:bg-gray-100 dark:hover:bg-gray-700'
         }`;
     });
 
+    // Close mobile nav
+    mobileNav.classList.add('hidden');
+    document.body.style.overflow = '';
+
     // Generate content
-    contentArea.innerHTML = topic.subtopics.map((subtopic, subtopicIndex) => {
-        const subtopicId = `${index}-${subtopicIndex}`;
-        const isExpanded = expandedSubtopics.has(subtopicId);
-        
-        return `
-            <div id="subtopic-${subtopicId}" 
-                 class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in overflow-hidden" 
-                 style="animation-delay: ${subtopicIndex * 100}ms">
-                <button onclick="window.toggleSubtopic('${subtopicId}')"
-                        class="w-full p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                    <div class="flex items-center space-x-3">
-                        <div class="p-2 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
+    contentArea.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6">
+            <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">${topic.title}</h2>
+            ${topic.description ? `
+                <p class="mt-2 text-gray-600 dark:text-gray-400">${topic.description}</p>
+            ` : ''}
+        </div>
+        ${topic.subtopics.map((subtopic, subtopicIndex) => {
+            const subtopicId = `${index}-${subtopicIndex}`;
+            const isExpanded = expandedSubtopics.has(subtopicId);
+            
+            return `
+                <div id="subtopic-${subtopicId}" 
+                     class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in overflow-hidden" 
+                     style="animation-delay: ${subtopicIndex * 100}ms">
+                    <button onclick="window.toggleSubtopic('${subtopicId}')"
+                            class="w-full p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <div class="flex items-center space-x-3">
+                            <div class="p-2 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg">
+                                <svg class="h-5 w-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                            <h3 class="text-lg sm:text-xl font-bold">${subtopic.title}</h3>
                         </div>
-                        <h3 class="text-xl font-bold">${subtopic.title}</h3>
-                    </div>
-                    <svg id="chevron-${subtopicId}" 
-                         class="h-5 w-5 transition-transform ${isExpanded ? 'rotate-180' : ''}" 
-                         fill="none" 
-                         stroke="currentColor" 
-                         viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                </button>
-                <div id="content-${subtopicId}" 
-                     class="${isExpanded ? '' : 'hidden'} border-t border-gray-200 dark:border-gray-700">
-                    <div class="p-6 space-y-6">
-                        ${subtopic.content.map(item => renderContent(item)).join('')}
+                        <svg id="chevron-${subtopicId}" 
+                             class="h-5 w-5 transition-transform ${isExpanded ? 'rotate-180' : ''}" 
+                             fill="none" 
+                             stroke="currentColor" 
+                             viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <div id="content-${subtopicId}" 
+                         class="${isExpanded ? '' : 'hidden'} border-t border-gray-200 dark:border-gray-700">
+                        <div class="p-4 sm:p-6 space-y-6">
+                            ${renderContent(subtopic.content)}
+                        </div>
                     </div>
                 </div>
+            `;
+        }).join('')}
+    `;
+};
+
+// Show welcome message when no topic is selected
+function showWelcomeMessage() {
+    const contentArea = document.getElementById('content-area');
+    contentArea.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 text-center animate-fade-in">
+            <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/50 rounded-full mx-auto flex items-center justify-center mb-4">
+                <svg class="w-8 h-8 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
             </div>
-        `;
-    }).join('');
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Welcome to VAPT Checklist</h2>
+            <p class="text-gray-600 dark:text-gray-400 mb-6">Please select a topic from the sidebar to get started.</p>
+            <div class="flex justify-center gap-4">
+                <button onclick="document.getElementById('search-btn').click()" 
+                        class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/70 transition-colors gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    Search Topics
+                </button>
+            </div>
+        </div>
+    `;
 }
 
 // Render different types of content
-function renderContent(item) {
-    switch (item.type) {
-        case 'data':
-            return `
-                <div class="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-6">
-                    <p class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">${item.data}</p>
-                    ${item.links ? `
-                        <div class="flex flex-wrap gap-2 mb-4">
-                            ${item.links.map(link => createLinkButton(link)).join('')}
-                        </div>
-                    ` : ''}
-                    ${item.point ? `
-                        <ul class="space-y-3">
-                            ${item.point.map(point => `
-                                <li class="flex items-start gap-3">
-                                    <svg class="h-5 w-5 text-indigo-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    <span class="text-gray-700 dark:text-gray-300">${point}</span>
-                                </li>
-                            `).join('')}
-                        </ul>
-                    ` : ''}
-                </div>
-            `;
-        case 'examples':
-            return `
-                <div class="space-y-4">
-                    ${item.examples.map(example => `
-                        <div class="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-6">
-                            <h4 class="text-lg font-semibold text-indigo-600 dark:text-indigo-400 mb-4">
-                                ${example.title}
-                            </h4>
-                            ${example.data ? `
-                                <div class="space-y-3 mb-4">
-                                    ${example.data.map(text => `
-                                        <p class="text-gray-700 dark:text-gray-300">${text}</p>
-                                    `).join('')}
-                                </div>
-                            ` : ''}
-                            ${example.code ? `
-                                <div class="space-y-3">
-                                    ${example.code.map(code => createCodeBlock(code)).join('')}
-                                </div>
-                            ` : ''}
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        default:
-            return '';
-    }
+function renderContent(content) {
+    return content.map(item => {
+        switch (item.type) {
+            case 'data':
+                return `
+                    <div class="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 sm:p-6">
+                        <p class="text-base sm:text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">${item.data}</p>
+                        ${item.links ? `
+                            <div class="flex flex-wrap gap-2 mb-4">
+                                ${item.links.map(createLinkButton).join('')}
+                            </div>
+                        ` : ''}
+                        ${item.point ? `
+                            <ul class="space-y-3">
+                                ${item.point.map(point => `
+                                    <li class="flex items-start gap-3">
+                                        <svg class="h-5 w-5 text-indigo-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <span class="text-gray-700 dark:text-gray-300">${point}</span>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        ` : ''}
+                    </div>
+                `;
+            case 'examples':
+                return `
+                    <div class="space-y-4">
+                        ${item.examples.map(example => `
+                            <div class="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 sm:p-6">
+                                <h4 class="text-lg font-semibold text-indigo-600 dark:text-indigo-400 mb-4">
+                                    ${example.title}
+                                </h4>
+                                ${example.data ? `
+                                    <div class="space-y-3 mb-4">
+                                        ${example.data.map(text => `
+                                            <p class="text-gray-700 dark:text-gray-300">${text}</p>
+                                        `).join('')}
+                                    </div>
+                                ` : ''}
+                                ${example.code ? `
+                                    <div class="space-y-3">
+                                        ${example.code.map(createCodeBlock).join('')}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            default:
+                return '';
+        }
+    }).join('');
 }
 
 // Create link button
@@ -249,4 +326,4 @@ function createCodeBlock(code) {
 
 // Initialize
 loadTopics();
-loadContent(0);
+showWelcomeMessage(); // Show welcome message initially instead of loading first topic
